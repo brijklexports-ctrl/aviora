@@ -55,33 +55,20 @@ npm install
 vercel deploy --prod
 ```
 
-`vercel.json` schedules `/api/sync` every 30 minutes. **Note: Vercel's Hobby
-(free) plan only allows cron jobs to run once a day** — if you're on Hobby and
-want the ~15–30 min freshness you asked for, use the GitHub Actions workflow
-below instead (or upgrade to Pro, which allows frequent crons).
+`vercel.json` schedules `/api/sync` to run once a day (3am UTC), which is
+the fastest cron frequency Vercel's free Hobby plan allows — no extra setup
+needed, this works out of the box.
 
-### Alternative: trigger sync from GitHub Actions (works on any Vercel plan)
+If you ever want faster refresh (e.g. every few hours), Vercel's Hobby plan
+still won't allow it natively — you'd need either a Pro plan, or an external
+scheduler (like a GitHub Actions workflow) hitting `/api/sync` with
+`Authorization: Bearer <CRON_SECRET>` on its own schedule. Not set up here
+since daily is what's needed right now.
 
-Remove the `crons` block from `vercel.json` and instead add
-`.github/workflows/sync.yml`:
-
-```yaml
-name: Sync catalog
-on:
-  schedule:
-    - cron: "*/30 * * * *"
-  workflow_dispatch: {}
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          curl -sf -X GET "https://YOUR-DOMAIN/api/sync" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+You can also trigger a sync manually anytime without waiting for the cron:
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://YOUR-DOMAIN/api/sync
 ```
-
-Add `CRON_SECRET` as a GitHub Actions repository secret (same value as in
-Vercel).
 
 ## What's replicated vs. simplified
 
