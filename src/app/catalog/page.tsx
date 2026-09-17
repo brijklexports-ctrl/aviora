@@ -7,7 +7,7 @@ import { SearchSort } from "@/components/SearchSort";
 
 const PAGE_SIZE = 24;
 
-type Sort = "newest" | "oldest" | "title_asc" | "title_desc";
+type Sort = "newest" | "price_asc" | "price_desc";
 
 interface PageProps {
   searchParams: Promise<{ productType?: string; q?: string; sort?: string; page?: string }>;

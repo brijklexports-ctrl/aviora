@@ -74,16 +74,19 @@ export async function ensureSchema() {
 export interface ListProductsParams {
   productType?: string;
   search?: string;
-  sort?: "newest" | "oldest" | "title_asc" | "title_desc";
+  sort?: "newest" | "price_asc" | "price_desc";
   limit?: number;
   offset?: number;
 }
 
+// Matches the sort options on the source gembox.app catalog (Newest / Price:
+// Low to High / Price: High to Low). Products without a price (which is
+// currently all of them, since pricing is gated behind account approval)
+// sort to the end regardless of direction rather than clustering at the top.
 const ORDER_BY: Record<NonNullable<ListProductsParams["sort"]>, string> = {
   newest: "first_synced_at DESC",
-  oldest: "first_synced_at ASC",
-  title_asc: "title ASC",
-  title_desc: "title DESC",
+  price_asc: "price ASC NULLS LAST, first_synced_at DESC",
+  price_desc: "price DESC NULLS LAST, first_synced_at DESC",
 };
 
 export async function listProducts(params: ListProductsParams = {}): Promise<ProductRow[]> {
