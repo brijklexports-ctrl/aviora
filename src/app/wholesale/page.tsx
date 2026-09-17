@@ -1,4 +1,12 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+
+const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || "Aviora Jewelry";
+
+export const metadata: Metadata = {
+  title: `${SITE_NAME} — Wholesale Diamond Jewelry for Retailers`,
+  description: `${SITE_NAME} supplies certified diamond jewelry at wholesale prices to independent and chain jewelry retailers across the USA. Apply for a wholesale account.`,
+};
 
 const STYLES = `
   :root {
@@ -344,7 +352,7 @@ export default function LandingPage() {
             <a href="#how-it-works">How It Works</a>
             <a href="#faq">FAQ</a>
             <a href="#contact">Contact</a>
-            <Link href="/catalog">Catalog</Link>
+            <Link href="/">Catalog</Link>
           </nav>
           <div className="nav-cta">
             <a className="btn btn-outline btn-sm" href="https://wa.me/10000000000" target="_blank" rel="noopener">
@@ -714,7 +722,7 @@ export default function LandingPage() {
                 <li><a href="tel:+10000000000">(000) 000-0000</a></li>
                 <li><a href="mailto:brij.klexports@gmail.com">brij.klexports@gmail.com</a></li>
                 <li><a href="https://wa.me/10000000000" target="_blank" rel="noopener">WhatsApp</a></li>
-                <li><Link href="/catalog">Browse Catalog</Link></li>
+                <li><Link href="/">Browse Catalog</Link></li>
               </ul>
             </div>
           </div>

@@ -9,7 +9,7 @@ export function CategoryTile({
   count: number;
   active: boolean;
 }) {
-  const href = active ? "/catalog" : `/catalog?productType=${encodeURIComponent(productType)}`;
+  const href = active ? "/" : `/?productType=${encodeURIComponent(productType)}`;
 
   return (
     <Link

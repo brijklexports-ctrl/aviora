@@ -8,7 +8,7 @@ export function ProductCard({ product }: { product: ProductRow }) {
 
   return (
     <Link
-      href={`/catalog/product/${product.slug}`}
+      href={`/product/${product.slug}`}
       className="group block overflow-hidden rounded-lg border border-line bg-white"
     >
       <div className="relative aspect-square w-full overflow-hidden bg-black">

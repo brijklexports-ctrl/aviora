@@ -4,13 +4,14 @@ import "./globals.css";
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || "Aviora Jewelry";
 
 export const metadata: Metadata = {
-  title: `${SITE_NAME} — Wholesale Diamond Jewelry for Retailers`,
-  description: `${SITE_NAME} supplies certified diamond jewelry at wholesale prices to independent and chain jewelry retailers across the USA. Apply for a wholesale account.`,
+  title: SITE_NAME,
+  description: `${SITE_NAME} — fine jewelry catalog`,
 };
 
-// No shared header here: the homepage (src/app/page.tsx) is the wholesale
-// landing page with its own full-width header/nav. The catalog subtree
-// (src/app/catalog) has its own layout that adds the catalog-browsing header.
+// No header here: the (shop) route group (catalog + product pages, which
+// is now the homepage) has its own layout that adds the catalog-browsing
+// header. /wholesale renders its own full-width header/nav inline, so it
+// stays outside that group and gets only this bare root layout.
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">

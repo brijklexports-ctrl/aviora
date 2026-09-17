@@ -15,7 +15,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     (a) => !["price", "description", "detailedTitle"].includes(a.name)
   );
 
-  const productUrl = `${SITE_URL}/catalog/product/${product.slug}`;
+  const productUrl = `${SITE_URL}/product/${product.slug}`;
   const mailSubject = `Inquiry: ${product.title}`;
   const mailBody = [
     `Hi,`,
@@ -38,7 +38,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   return (
     <div className="mx-auto max-w-7xl px-6 py-10">
       <nav className="mb-6 text-sm text-ink/60">
-        <Link href="/catalog" className="hover:text-ink">
+        <Link href="/" className="hover:text-ink">
           Catalogue
         </Link>
         <span className="mx-2">/</span>

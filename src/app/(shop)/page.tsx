@@ -35,7 +35,7 @@ export default async function CatalogPage({ searchParams }: PageProps) {
     if (sort !== "newest") params.set("sort", sort);
     if (p > 1) params.set("page", String(p));
     const qs = params.toString();
-    return qs ? `/catalog?${qs}` : "/catalog";
+    return qs ? `/?${qs}` : "/";
   };
 
   return (

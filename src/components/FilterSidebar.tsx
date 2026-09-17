@@ -17,7 +17,7 @@ export function FilterSidebar({
         <ul className="space-y-1 text-sm">
           <li>
             <Link
-              href="/catalog"
+              href="/"
               className={`block rounded px-2 py-1 ${!activeType ? "bg-ink text-white" : "hover:bg-line/60"}`}
             >
               All
@@ -26,7 +26,7 @@ export function FilterSidebar({
           {categories.map((c) => (
             <li key={c.productType}>
               <Link
-                href={`/catalog?productType=${encodeURIComponent(c.productType)}`}
+                href={`/?productType=${encodeURIComponent(c.productType)}`}
                 className={`flex items-center justify-between rounded px-2 py-1 ${
                   activeType === c.productType ? "bg-ink text-white" : "hover:bg-line/60"
                 }`}

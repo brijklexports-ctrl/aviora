@@ -8,7 +8,7 @@ export function SearchSort({
   sort?: string;
 }) {
   return (
-    <form action="/catalog" method="get" className="flex flex-1 flex-wrap items-center gap-3">
+    <form action="/" method="get" className="flex flex-1 flex-wrap items-center gap-3">
       {productType && <input type="hidden" name="productType" value={productType} />}
       <input
         type="text"
