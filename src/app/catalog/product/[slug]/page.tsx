@@ -1,17 +1,39 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProductBySlug } from "@/lib/db";
+import { ProductGallery } from "@/components/ProductGallery";
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.avioralab.com";
+const CONTACT_EMAIL = "brij.klexports@gmail.com";
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
   if (!product || !product.active) notFound();
 
-  const images = product.images.length > 0 ? product.images : [];
   const specAttributes = product.attributes.filter(
     (a) => !["price", "description", "detailedTitle"].includes(a.name)
   );
+
+  const productUrl = `${SITE_URL}/catalog/product/${product.slug}`;
+  const mailSubject = `Inquiry: ${product.title}`;
+  const mailBody = [
+    `Hi,`,
+    ``,
+    `I'm interested in this piece:`,
+    ``,
+    product.title,
+    product.sku ? `SKU: ${product.sku}` : null,
+    `Product Type: ${product.product_type}`,
+    `Link: ${productUrl}`,
+    ``,
+    `Please send me more details.`,
+    ``,
+    `Thanks!`,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+  const mailtoHref = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-10">
@@ -24,24 +46,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       </nav>
 
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
-        <div className="space-y-3">
-          <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-black">
-            {images[0] ? (
-              <Image src={images[0]} alt={product.title} fill className="object-cover" priority />
-            ) : (
-              <div className="flex h-full items-center justify-center text-white/50">No image</div>
-            )}
-          </div>
-          {images.length > 1 && (
-            <div className="grid grid-cols-5 gap-2">
-              {images.slice(1, 6).map((img, i) => (
-                <div key={i} className="relative aspect-square overflow-hidden rounded bg-black">
-                  <Image src={img} alt={`${product.title} ${i + 2}`} fill className="object-cover" />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <ProductGallery media={product.media} title={product.title} />
 
         <div>
           <p className="mb-2 text-xs uppercase tracking-wider text-ink/50">
@@ -55,7 +60,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           )}
 
           <a
-            href="mailto:brij.klexports@gmail.com"
+            href={mailtoHref}
             className="mb-8 inline-block rounded-full bg-ink px-6 py-3 text-sm text-white hover:bg-ink/90"
           >
             Contact the Seller

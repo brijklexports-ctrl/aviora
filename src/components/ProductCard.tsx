@@ -3,7 +3,8 @@ import Link from "next/link";
 import type { ProductRow } from "@/lib/db";
 
 export function ProductCard({ product }: { product: ProductRow }) {
-  const image = product.images[0];
+  const first = product.media[0];
+  const image = first ? (first.type === "image" ? first.url : first.poster ?? first.url) : undefined;
 
   return (
     <Link

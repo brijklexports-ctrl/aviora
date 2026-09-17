@@ -15,6 +15,12 @@ function db() {
   return neon(connectionString());
 }
 
+export interface ProductMedia {
+  type: "image" | "video";
+  url: string;
+  poster?: string;
+}
+
 export interface ProductRow {
   id: number;
   slug: string;
@@ -26,7 +32,7 @@ export interface ProductRow {
   currency: string | null;
   quantity: number | null;
   attributes: Array<{ name: string; displayName: string; value: string | null; prefix?: string | null; suffix?: string | null }>;
-  images: string[];
+  media: ProductMedia[];
   active: boolean;
   last_synced_at: string;
 }
@@ -54,9 +60,10 @@ export async function ensureSchema() {
       last_synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `;
-  // Safe to run repeatedly: adds the column only if an earlier deploy's
-  // table doesn't have it yet (e.g. it existed before this field did).
+  // Safe to run repeatedly: adds columns only if an earlier deploy's table
+  // doesn't have them yet (e.g. it existed before these fields did).
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS source_created_at TIMESTAMPTZ;`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS media JSONB NOT NULL DEFAULT '[]';`;
   await sql`CREATE INDEX IF NOT EXISTS idx_products_product_type ON products(product_type);`;
   await sql`CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);`;
 
@@ -102,7 +109,7 @@ export async function listProducts(params: ListProductsParams = {}): Promise<Pro
   const rows = await sql.query(
     `
       SELECT id, slug, product_type, title, description, sku, price, currency,
-             quantity, attributes, images, active, last_synced_at
+             quantity, attributes, media, active, last_synced_at
       FROM products
       WHERE active = TRUE
         AND ($1::text IS NULL OR product_type = $1)
@@ -152,7 +159,7 @@ export async function getProductBySlug(slug: string): Promise<ProductRow | null>
   const sql = db();
   const rows = (await sql`
     SELECT id, slug, product_type, title, description, sku, price, currency,
-           quantity, attributes, images, active, last_synced_at
+           quantity, attributes, media, active, last_synced_at
     FROM products
     WHERE slug = ${slug}
     LIMIT 1

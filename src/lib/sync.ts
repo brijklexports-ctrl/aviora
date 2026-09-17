@@ -16,12 +16,37 @@ function parseSourceCreatedAt(product: GemboxProduct): Date | null {
   return Number.isFinite(ms) ? new Date(ms) : null;
 }
 
-function extractImages(product: GemboxProduct): string[] {
-  return product.medias
-    .filter((m) => m.type === "image" && (m.file.medium || m.file.original || m.file.small))
-    .sort((a, b) => a.mediaPosition - b.mediaPosition)
-    .map((m) => m.file.medium || m.file.original || m.file.small)
-    .filter((url): url is string => Boolean(url));
+export interface MediaItem {
+  type: "image" | "video";
+  url: string;
+  poster?: string;
+}
+
+// The source represents each photo as type "image", and each 360-degree
+// spin capture as type "video360". Most video360 entries only have a static
+// thumbnail so far (the spin video hasn't been generated/uploaded yet on
+// gembox's side) — those are kept as a plain image using that thumbnail.
+// Ones with an actual mp4 (original/medium) become a playable video with
+// that thumbnail as its poster frame.
+function extractMedia(product: GemboxProduct): MediaItem[] {
+  const sorted = [...product.medias].sort((a, b) => a.mediaPosition - b.mediaPosition);
+  const items: MediaItem[] = [];
+
+  for (const m of sorted) {
+    if (m.type === "image") {
+      const url = m.file.medium || m.file.original || m.file.small;
+      if (url) items.push({ type: "image", url });
+    } else if (m.type === "video360") {
+      const videoUrl = m.file.medium || m.file.original;
+      if (videoUrl) {
+        items.push({ type: "video", url: videoUrl, poster: m.file.small ?? undefined });
+      } else if (m.file.small) {
+        items.push({ type: "image", url: m.file.small });
+      }
+    }
+  }
+
+  return items;
 }
 
 // Pulls every product from the source gembox.app catalog and upserts it into
@@ -52,14 +77,14 @@ export async function syncCatalog(): Promise<SyncResult> {
     for (const product of products) {
       seenIds.push(product.id);
       const slug = productSlug(product.title, product.id);
-      const images = extractImages(product);
+      const media = extractMedia(product);
       const sourceCreatedAt = parseSourceCreatedAt(product);
 
       const result = (await sql.query(
         `
           INSERT INTO products (
             id, slug, product_type, title, description, sku, price, currency,
-            quantity, attributes, images, source_uuid, source_created_at, active, last_synced_at
+            quantity, attributes, media, source_uuid, source_created_at, active, last_synced_at
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, TRUE, now())
           ON CONFLICT (id) DO UPDATE SET
             slug = EXCLUDED.slug,
@@ -71,7 +96,7 @@ export async function syncCatalog(): Promise<SyncResult> {
             currency = EXCLUDED.currency,
             quantity = EXCLUDED.quantity,
             attributes = EXCLUDED.attributes,
-            images = EXCLUDED.images,
+            media = EXCLUDED.media,
             source_uuid = EXCLUDED.source_uuid,
             source_created_at = EXCLUDED.source_created_at,
             active = TRUE,
@@ -89,7 +114,7 @@ export async function syncCatalog(): Promise<SyncResult> {
           product.currency,
           product.quantity,
           JSON.stringify(product.attributes),
-          JSON.stringify(images),
+          JSON.stringify(media),
           product.link?.uuid ?? null,
           sourceCreatedAt,
         ]
