@@ -344,6 +344,7 @@ export default function LandingPage() {
             <a href="#how-it-works">How It Works</a>
             <a href="#faq">FAQ</a>
             <a href="#contact">Contact</a>
+            <Link href="/catalog">Catalog</Link>
           </nav>
           <div className="nav-cta">
             <a className="btn btn-outline btn-sm" href="https://wa.me/10000000000" target="_blank" rel="noopener">
