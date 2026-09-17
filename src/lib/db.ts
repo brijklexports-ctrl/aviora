@@ -48,11 +48,15 @@ export async function ensureSchema() {
       attributes JSONB NOT NULL DEFAULT '[]',
       images JSONB NOT NULL DEFAULT '[]',
       source_uuid TEXT,
+      source_created_at TIMESTAMPTZ,
       active BOOLEAN NOT NULL DEFAULT TRUE,
       first_synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       last_synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `;
+  // Safe to run repeatedly: adds the column only if an earlier deploy's
+  // table doesn't have it yet (e.g. it existed before this field did).
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS source_created_at TIMESTAMPTZ;`;
   await sql`CREATE INDEX IF NOT EXISTS idx_products_product_type ON products(product_type);`;
   await sql`CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);`;
 
@@ -84,9 +88,9 @@ export interface ListProductsParams {
 // currently all of them, since pricing is gated behind account approval)
 // sort to the end regardless of direction rather than clustering at the top.
 const ORDER_BY: Record<NonNullable<ListProductsParams["sort"]>, string> = {
-  newest: "first_synced_at DESC",
-  price_asc: "price ASC NULLS LAST, first_synced_at DESC",
-  price_desc: "price DESC NULLS LAST, first_synced_at DESC",
+  newest: "source_created_at DESC NULLS LAST, first_synced_at DESC",
+  price_asc: "price ASC NULLS LAST, source_created_at DESC NULLS LAST",
+  price_desc: "price DESC NULLS LAST, source_created_at DESC NULLS LAST",
 };
 
 export async function listProducts(params: ListProductsParams = {}): Promise<ProductRow[]> {

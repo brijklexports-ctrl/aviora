@@ -10,6 +10,12 @@ export interface SyncResult {
   deactivated: number;
 }
 
+function parseSourceCreatedAt(product: GemboxProduct): Date | null {
+  if (!product.createdAt) return null;
+  const ms = Number(product.createdAt);
+  return Number.isFinite(ms) ? new Date(ms) : null;
+}
+
 function extractImages(product: GemboxProduct): string[] {
   return product.medias
     .filter((m) => m.type === "image" && (m.file.medium || m.file.original || m.file.small))
@@ -47,13 +53,14 @@ export async function syncCatalog(): Promise<SyncResult> {
       seenIds.push(product.id);
       const slug = productSlug(product.title, product.id);
       const images = extractImages(product);
+      const sourceCreatedAt = parseSourceCreatedAt(product);
 
       const result = (await sql.query(
         `
           INSERT INTO products (
             id, slug, product_type, title, description, sku, price, currency,
-            quantity, attributes, images, source_uuid, active, last_synced_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, TRUE, now())
+            quantity, attributes, images, source_uuid, source_created_at, active, last_synced_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, TRUE, now())
           ON CONFLICT (id) DO UPDATE SET
             slug = EXCLUDED.slug,
             product_type = EXCLUDED.product_type,
@@ -66,6 +73,7 @@ export async function syncCatalog(): Promise<SyncResult> {
             attributes = EXCLUDED.attributes,
             images = EXCLUDED.images,
             source_uuid = EXCLUDED.source_uuid,
+            source_created_at = EXCLUDED.source_created_at,
             active = TRUE,
             last_synced_at = now()
           RETURNING (xmax = 0) AS inserted
@@ -83,6 +91,7 @@ export async function syncCatalog(): Promise<SyncResult> {
           JSON.stringify(product.attributes),
           JSON.stringify(images),
           product.link?.uuid ?? null,
+          sourceCreatedAt,
         ]
       )) as Array<{ inserted: boolean }>;
 

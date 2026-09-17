@@ -20,6 +20,7 @@ query LinkProductList($uuid: String!, $page: Int, $pageSize: Int, $sortRule: pro
       description
       sku
       quantity
+      createdAt
       attributes {
         name
         displayName
@@ -74,6 +75,7 @@ export interface GemboxProduct {
   description: string | null;
   sku: string | null;
   quantity: number | null;
+  createdAt: string | null;
   attributes: GemboxAttribute[];
   link: { uuid: string } | null;
   medias: GemboxMedia[];
