@@ -1,7 +1,23 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { upsertCollectionMeta } from "@/lib/db";
+import { upsertCollectionMeta, setCategoryAlias } from "@/lib/db";
+
+function revalidateCollections() {
+  revalidatePath("/admin/collections");
+  revalidatePath("/");
+  revalidatePath("/shop");
+  revalidatePath("/collections/[slug]", "page");
+}
+
+export async function setCategoryAliasAction(formData: FormData) {
+  const source = String(formData.get("source") || "");
+  if (!source) throw new Error("Missing source");
+  const target = String(formData.get("target") || "").trim();
+
+  await setCategoryAlias(source, target || null);
+  revalidateCollections();
+}
 
 export async function saveCollectionAction(formData: FormData) {
   const productType = String(formData.get("productType") || "");
@@ -21,7 +37,5 @@ export async function saveCollectionAction(formData: FormData) {
     sortOrder: sortOrderRaw === "" ? null : Number(sortOrderRaw),
   });
 
-  revalidatePath("/admin/collections");
-  revalidatePath("/");
-  revalidatePath("/collections/[slug]", "page");
+  revalidateCollections();
 }

@@ -103,7 +103,9 @@ export async function ensureSchema() {
 
   // One row per product_type ("collection"), keyed by that category name
   // since collections are auto-derived from it. A category with no row
-  // here yet just uses defaults (published, no custom copy/hero).
+  // here yet just uses defaults (published, no custom copy/hero). Once a
+  // raw product_type is merged elsewhere (see category_aliases below), its
+  // own meta row — if any — is simply unused; nothing needs to delete it.
   await sql`
     CREATE TABLE IF NOT EXISTS collection_meta (
       product_type TEXT PRIMARY KEY,
@@ -112,6 +114,18 @@ export async function ensureSchema() {
       hero_image_url TEXT,
       published BOOLEAN NOT NULL DEFAULT TRUE,
       sort_order INTEGER,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `;
+
+  // Lets an admin fold a raw synced category into another one (e.g.
+  // "Solitaire Rings" -> "Engagement Rings") without the sync job ever
+  // reverting it — sync only ever writes the raw products.product_type,
+  // never touches this table.
+  await sql`
+    CREATE TABLE IF NOT EXISTS category_aliases (
+      source_product_type TEXT PRIMARY KEY,
+      target_category TEXT NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `;
@@ -142,23 +156,100 @@ const PUBLIC_SELECT = `
   sku, price, currency, quantity, attributes, media, active, featured, last_synced_at
 `;
 
+// --- Category merging ------------------------------------------------------
+// A raw product_type (as synced from gembox) can be folded into another
+// category's name ("Solitaire Rings" -> "Engagement Rings") by an admin.
+// Everywhere below that groups or filters by category resolves through
+// this map first, so a merge behaves the same as if the two had always
+// been one category, without ever rewriting the synced product_type.
+
+async function getCategoryAliasMap(): Promise<Record<string, string>> {
+  const sql = db();
+  const rows = (await sql`SELECT source_product_type, target_category FROM category_aliases`) as Array<{
+    source_product_type: string;
+    target_category: string;
+  }>;
+  const map: Record<string, string> = {};
+  for (const r of rows) map[r.source_product_type] = r.target_category;
+  return map;
+}
+
+function resolveCategory(productType: string, aliasMap: Record<string, string>): string {
+  return aliasMap[productType] ?? productType;
+}
+
+async function listRawProductTypes(): Promise<string[]> {
+  const sql = db();
+  const rows = (await sql`SELECT DISTINCT product_type FROM products`) as Array<{ product_type: string }>;
+  return rows.map((r) => r.product_type);
+}
+
+// Every raw product_type that resolves (after merging) to this canonical
+// category name — used to turn a "show me category X" request into the
+// SQL-level set of raw values to match.
+async function rawTypesForCategory(canonical: string): Promise<string[]> {
+  const [allTypes, aliasMap] = await Promise.all([listRawProductTypes(), getCategoryAliasMap()]);
+  const matches = allTypes.filter((t) => resolveCategory(t, aliasMap) === canonical);
+  return matches.length > 0 ? matches : [canonical];
+}
+
+export async function setCategoryAlias(sourceProductType: string, targetCategory: string | null): Promise<void> {
+  const sql = db();
+  if (!targetCategory || targetCategory === sourceProductType) {
+    await sql`DELETE FROM category_aliases WHERE source_product_type = ${sourceProductType}`;
+  } else {
+    await sql`
+      INSERT INTO category_aliases (source_product_type, target_category, updated_at)
+      VALUES (${sourceProductType}, ${targetCategory}, now())
+      ON CONFLICT (source_product_type) DO UPDATE SET
+        target_category = EXCLUDED.target_category,
+        updated_at = now()
+    `;
+  }
+}
+
+export interface RawCategoryAdminRow {
+  productType: string;
+  count: number;
+  mergedInto: string | null;
+}
+
+export async function listRawCategoriesAdmin(): Promise<RawCategoryAdminRow[]> {
+  const sql = db();
+  const rows = (await sql`
+    SELECT product_type, COUNT(*)::text AS count
+    FROM products
+    WHERE active = TRUE AND hidden = FALSE
+    GROUP BY product_type
+    ORDER BY product_type ASC
+  `) as Array<{ product_type: string; count: string }>;
+
+  const aliasMap = await getCategoryAliasMap();
+  return rows.map((r) => ({
+    productType: r.product_type,
+    count: Number(r.count),
+    mergedInto: aliasMap[r.product_type] ?? null,
+  }));
+}
+
 export async function listProducts(params: ListProductsParams = {}): Promise<ProductRow[]> {
   const { productType, search, sort = "newest", limit = 24, offset = 0 } = params;
   const sql = db();
   const like = search ? `%${search}%` : null;
   const orderBy = ORDER_BY[sort] ?? ORDER_BY.newest;
+  const rawTypes = productType ? await rawTypesForCategory(productType) : null;
 
   const rows = await sql.query(
     `
       SELECT ${PUBLIC_SELECT}
       FROM products
       WHERE active = TRUE AND hidden = FALSE
-        AND ($1::text IS NULL OR product_type = $1)
+        AND ($1::text[] IS NULL OR product_type = ANY($1))
         AND ($2::text IS NULL OR title ILIKE $2)
       ORDER BY ${orderBy}
       LIMIT $3 OFFSET $4
     `,
-    [productType ?? null, like, limit, offset]
+    [rawTypes, like, limit, offset]
   );
 
   return rows as ProductRow[];
@@ -168,16 +259,17 @@ export async function countProducts(params: Pick<ListProductsParams, "productTyp
   const { productType, search } = params;
   const sql = db();
   const like = search ? `%${search}%` : null;
+  const rawTypes = productType ? await rawTypesForCategory(productType) : null;
 
   const rows = await sql.query(
     `
       SELECT COUNT(*)::text AS count
       FROM products
       WHERE active = TRUE AND hidden = FALSE
-        AND ($1::text IS NULL OR product_type = $1)
+        AND ($1::text[] IS NULL OR product_type = ANY($1))
         AND ($2::text IS NULL OR title ILIKE $2)
     `,
-    [productType ?? null, like]
+    [rawTypes, like]
   );
 
   return Number((rows as Array<{ count: string }>)[0]?.count ?? 0);
@@ -190,10 +282,18 @@ export async function listCategories(): Promise<{ productType: string; count: nu
     FROM products
     WHERE active = TRUE AND hidden = FALSE
     GROUP BY product_type
-    ORDER BY COUNT(*) DESC
   `) as Array<{ product_type: string; count: string }>;
 
-  return rows.map((r) => ({ productType: r.product_type, count: Number(r.count) }));
+  const aliasMap = await getCategoryAliasMap();
+  const merged = new Map<string, number>();
+  for (const r of rows) {
+    const canonical = resolveCategory(r.product_type, aliasMap);
+    merged.set(canonical, (merged.get(canonical) ?? 0) + Number(r.count));
+  }
+
+  return Array.from(merged.entries())
+    .map(([productType, count]) => ({ productType, count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 export async function getProductBySlug(slug: string): Promise<ProductRow | null> {
@@ -221,38 +321,44 @@ export interface CollectionSummary {
 
 export async function listCollections(opts: { publishedOnly?: boolean } = {}): Promise<CollectionSummary[]> {
   const sql = db();
-  const rows = (await sql`
-    SELECT
-      p.product_type,
-      COUNT(*)::text AS count,
-      cm.title,
-      cm.description,
-      cm.hero_image_url,
-      COALESCE(cm.published, TRUE) AS published,
-      cm.sort_order
-    FROM products p
-    LEFT JOIN collection_meta cm ON cm.product_type = p.product_type
-    WHERE p.active = TRUE AND p.hidden = FALSE
-    GROUP BY p.product_type, cm.title, cm.description, cm.hero_image_url, cm.published, cm.sort_order
+  const rawRows = (await sql`
+    SELECT product_type, COUNT(*)::text AS count
+    FROM products
+    WHERE active = TRUE AND hidden = FALSE
+    GROUP BY product_type
+  `) as Array<{ product_type: string; count: string }>;
+
+  const aliasMap = await getCategoryAliasMap();
+  const counts = new Map<string, number>();
+  for (const r of rawRows) {
+    const canonical = resolveCategory(r.product_type, aliasMap);
+    counts.set(canonical, (counts.get(canonical) ?? 0) + Number(r.count));
+  }
+
+  const metaRows = (await sql`
+    SELECT product_type, title, description, hero_image_url, published, sort_order FROM collection_meta
   `) as Array<{
     product_type: string;
-    count: string;
     title: string | null;
     description: string | null;
     hero_image_url: string | null;
     published: boolean;
     sort_order: number | null;
   }>;
+  const metaMap = new Map(metaRows.map((m) => [m.product_type, m]));
 
-  let list: CollectionSummary[] = rows.map((r) => ({
-    productType: r.product_type,
-    title: r.title || r.product_type,
-    description: r.description,
-    heroImageUrl: r.hero_image_url,
-    published: r.published,
-    sortOrder: r.sort_order,
-    count: Number(r.count),
-  }));
+  let list: CollectionSummary[] = Array.from(counts.entries()).map(([canonical, count]) => {
+    const meta = metaMap.get(canonical);
+    return {
+      productType: canonical,
+      title: meta?.title || canonical,
+      description: meta?.description ?? null,
+      heroImageUrl: meta?.hero_image_url ?? null,
+      published: meta ? meta.published : true,
+      sortOrder: meta?.sort_order ?? null,
+      count,
+    };
+  });
 
   if (opts.publishedOnly) {
     list = list.filter((c) => c.published);
