@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MoodBoardPill } from "./MoodBoardPill";
 
 export function Header({ siteName }: { siteName: string }) {
   return (
@@ -7,10 +8,14 @@ export function Header({ siteName }: { siteName: string }) {
         <Link href="/" className="font-serif text-xl tracking-wide">
           {siteName}
         </Link>
-        <nav className="text-sm text-ink/70">
+        <nav className="flex items-center gap-6 text-sm text-ink/70">
           <Link href="/" className="hover:text-ink">
-            Catalogue
+            Collections
           </Link>
+          <Link href="/shop" className="hover:text-ink">
+            Shop all
+          </Link>
+          <MoodBoardPill />
         </nav>
       </div>
     </header>

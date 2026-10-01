@@ -34,7 +34,20 @@ export interface ProductRow {
   attributes: Array<{ name: string; displayName: string; value: string | null; prefix?: string | null; suffix?: string | null }>;
   media: ProductMedia[];
   active: boolean;
+  featured: boolean;
   last_synced_at: string;
+}
+
+// The admin view needs the raw synced title/description plus the override
+// fields, since the public-facing queries already collapse those into one
+// effective value.
+export interface AdminProductRow extends Omit<ProductRow, "title" | "description"> {
+  title: string;
+  description: string | null;
+  title_override: string | null;
+  description_override: string | null;
+  hidden: boolean;
+  sort_order: number | null;
 }
 
 export async function ensureSchema() {
@@ -64,6 +77,13 @@ export async function ensureSchema() {
   // doesn't have them yet (e.g. it existed before these fields did).
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS source_created_at TIMESTAMPTZ;`;
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS media JSONB NOT NULL DEFAULT '[]';`;
+  // Admin-controlled fields. The sync job never writes to these, so they
+  // survive every resync untouched.
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE;`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS sort_order INTEGER;`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS title_override TEXT;`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS description_override TEXT;`;
   await sql`CREATE INDEX IF NOT EXISTS idx_products_product_type ON products(product_type);`;
   await sql`CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);`;
 
@@ -80,6 +100,21 @@ export async function ensureSchema() {
       error TEXT
     );
   `;
+
+  // One row per product_type ("collection"), keyed by that category name
+  // since collections are auto-derived from it. A category with no row
+  // here yet just uses defaults (published, no custom copy/hero).
+  await sql`
+    CREATE TABLE IF NOT EXISTS collection_meta (
+      product_type TEXT PRIMARY KEY,
+      title TEXT,
+      description TEXT,
+      hero_image_url TEXT,
+      published BOOLEAN NOT NULL DEFAULT TRUE,
+      sort_order INTEGER,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `;
 }
 
 export interface ListProductsParams {
@@ -91,14 +126,21 @@ export interface ListProductsParams {
 }
 
 // Matches the sort options on the source gembox.app catalog (Newest / Price:
-// Low to High / Price: High to Low). Products without a price (which is
-// currently all of them, since pricing is gated behind account approval)
-// sort to the end regardless of direction rather than clustering at the top.
+// Low to High / Price: High to Low), with featured pieces pinned to the
+// front of "Newest" so admin-curated highlights show first. Products
+// without a price (currently all of them) sort to the end either way.
 const ORDER_BY: Record<NonNullable<ListProductsParams["sort"]>, string> = {
-  newest: "source_created_at DESC NULLS LAST, first_synced_at DESC",
-  price_asc: "price ASC NULLS LAST, source_created_at DESC NULLS LAST",
-  price_desc: "price DESC NULLS LAST, source_created_at DESC NULLS LAST",
+  newest: "featured DESC, sort_order ASC NULLS LAST, source_created_at DESC NULLS LAST, first_synced_at DESC",
+  price_asc: "price ASC NULLS LAST, featured DESC, source_created_at DESC NULLS LAST",
+  price_desc: "price DESC NULLS LAST, featured DESC, source_created_at DESC NULLS LAST",
 };
+
+const PUBLIC_SELECT = `
+  id, slug, product_type,
+  COALESCE(title_override, title) AS title,
+  COALESCE(description_override, description) AS description,
+  sku, price, currency, quantity, attributes, media, active, featured, last_synced_at
+`;
 
 export async function listProducts(params: ListProductsParams = {}): Promise<ProductRow[]> {
   const { productType, search, sort = "newest", limit = 24, offset = 0 } = params;
@@ -108,10 +150,9 @@ export async function listProducts(params: ListProductsParams = {}): Promise<Pro
 
   const rows = await sql.query(
     `
-      SELECT id, slug, product_type, title, description, sku, price, currency,
-             quantity, attributes, media, active, last_synced_at
+      SELECT ${PUBLIC_SELECT}
       FROM products
-      WHERE active = TRUE
+      WHERE active = TRUE AND hidden = FALSE
         AND ($1::text IS NULL OR product_type = $1)
         AND ($2::text IS NULL OR title ILIKE $2)
       ORDER BY ${orderBy}
@@ -132,7 +173,7 @@ export async function countProducts(params: Pick<ListProductsParams, "productTyp
     `
       SELECT COUNT(*)::text AS count
       FROM products
-      WHERE active = TRUE
+      WHERE active = TRUE AND hidden = FALSE
         AND ($1::text IS NULL OR product_type = $1)
         AND ($2::text IS NULL OR title ILIKE $2)
     `,
@@ -147,7 +188,7 @@ export async function listCategories(): Promise<{ productType: string; count: nu
   const rows = (await sql`
     SELECT product_type, COUNT(*)::text AS count
     FROM products
-    WHERE active = TRUE
+    WHERE active = TRUE AND hidden = FALSE
     GROUP BY product_type
     ORDER BY COUNT(*) DESC
   `) as Array<{ product_type: string; count: string }>;
@@ -157,15 +198,208 @@ export async function listCategories(): Promise<{ productType: string; count: nu
 
 export async function getProductBySlug(slug: string): Promise<ProductRow | null> {
   const sql = db();
-  const rows = (await sql`
-    SELECT id, slug, product_type, title, description, sku, price, currency,
-           quantity, attributes, media, active, last_synced_at
-    FROM products
-    WHERE slug = ${slug}
-    LIMIT 1
-  `) as ProductRow[];
+  const rows = (await sql.query(
+    `SELECT ${PUBLIC_SELECT} FROM products WHERE slug = $1 LIMIT 1`,
+    [slug]
+  )) as ProductRow[];
 
   return rows[0] ?? null;
+}
+
+// --- Collections (auto-derived from product_type; collection_meta only
+// carries editorial overrides on top) -------------------------------------
+
+export interface CollectionSummary {
+  productType: string;
+  title: string;
+  description: string | null;
+  heroImageUrl: string | null;
+  published: boolean;
+  sortOrder: number | null;
+  count: number;
+}
+
+export async function listCollections(opts: { publishedOnly?: boolean } = {}): Promise<CollectionSummary[]> {
+  const sql = db();
+  const rows = (await sql`
+    SELECT
+      p.product_type,
+      COUNT(*)::text AS count,
+      cm.title,
+      cm.description,
+      cm.hero_image_url,
+      COALESCE(cm.published, TRUE) AS published,
+      cm.sort_order
+    FROM products p
+    LEFT JOIN collection_meta cm ON cm.product_type = p.product_type
+    WHERE p.active = TRUE AND p.hidden = FALSE
+    GROUP BY p.product_type, cm.title, cm.description, cm.hero_image_url, cm.published, cm.sort_order
+  `) as Array<{
+    product_type: string;
+    count: string;
+    title: string | null;
+    description: string | null;
+    hero_image_url: string | null;
+    published: boolean;
+    sort_order: number | null;
+  }>;
+
+  let list: CollectionSummary[] = rows.map((r) => ({
+    productType: r.product_type,
+    title: r.title || r.product_type,
+    description: r.description,
+    heroImageUrl: r.hero_image_url,
+    published: r.published,
+    sortOrder: r.sort_order,
+    count: Number(r.count),
+  }));
+
+  if (opts.publishedOnly) {
+    list = list.filter((c) => c.published);
+  }
+
+  list.sort((a, b) => {
+    const aOrder = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+    const bOrder = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return b.count - a.count;
+  });
+
+  return list;
+}
+
+export async function getCollectionByProductType(productType: string): Promise<CollectionSummary | null> {
+  const all = await listCollections();
+  return all.find((c) => c.productType === productType) ?? null;
+}
+
+// A representative image for a collection that has no hero_image_url set
+// yet — the first (newest/featured, per the normal sort) product's image.
+export async function getRepresentativeImage(productType: string): Promise<string | null> {
+  const products = await listProducts({ productType, limit: 1 });
+  const first = products[0];
+  if (!first) return null;
+  const media = first.media.find((m) => m.type === "image") ?? first.media[0];
+  if (!media) return null;
+  return media.type === "image" ? media.url : media.poster ?? media.url;
+}
+
+export async function upsertCollectionMeta(
+  productType: string,
+  fields: { title?: string | null; description?: string | null; heroImageUrl?: string | null; published?: boolean; sortOrder?: number | null }
+): Promise<void> {
+  const sql = db();
+  await sql`
+    INSERT INTO collection_meta (product_type, title, description, hero_image_url, published, sort_order, updated_at)
+    VALUES (
+      ${productType},
+      ${fields.title ?? null},
+      ${fields.description ?? null},
+      ${fields.heroImageUrl ?? null},
+      ${fields.published ?? true},
+      ${fields.sortOrder ?? null},
+      now()
+    )
+    ON CONFLICT (product_type) DO UPDATE SET
+      title = EXCLUDED.title,
+      description = EXCLUDED.description,
+      hero_image_url = EXCLUDED.hero_image_url,
+      published = EXCLUDED.published,
+      sort_order = EXCLUDED.sort_order,
+      updated_at = now()
+  `;
+}
+
+// --- Admin: full product visibility (no active/hidden filter), raw +
+// override fields, and simple mutation helpers --------------------------
+
+export interface ListAdminProductsParams {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+const ADMIN_SELECT = `
+  id, slug, product_type, title, description, title_override, description_override,
+  sku, price, currency, quantity, attributes, media, active, featured, hidden,
+  sort_order, last_synced_at
+`;
+
+export async function listAllProductsAdmin(params: ListAdminProductsParams = {}): Promise<AdminProductRow[]> {
+  const { search, limit = 50, offset = 0 } = params;
+  const sql = db();
+  const like = search ? `%${search}%` : null;
+
+  const rows = await sql.query(
+    `
+      SELECT ${ADMIN_SELECT}
+      FROM products
+      WHERE ($1::text IS NULL OR title ILIKE $1 OR sku ILIKE $1)
+      ORDER BY first_synced_at DESC
+      LIMIT $2 OFFSET $3
+    `,
+    [like, limit, offset]
+  );
+
+  return rows as AdminProductRow[];
+}
+
+export async function countAllProductsAdmin(search?: string): Promise<number> {
+  const sql = db();
+  const like = search ? `%${search}%` : null;
+  const rows = await sql.query(
+    `SELECT COUNT(*)::text AS count FROM products WHERE ($1::text IS NULL OR title ILIKE $1 OR sku ILIKE $1)`,
+    [like]
+  );
+  return Number((rows as Array<{ count: string }>)[0]?.count ?? 0);
+}
+
+export async function getProductByIdAdmin(id: number): Promise<AdminProductRow | null> {
+  const sql = db();
+  const rows = (await sql.query(`SELECT ${ADMIN_SELECT} FROM products WHERE id = $1`, [id])) as AdminProductRow[];
+  return rows[0] ?? null;
+}
+
+export async function updateProductAdmin(
+  id: number,
+  fields: { featured?: boolean; hidden?: boolean; sortOrder?: number | null; titleOverride?: string | null; descriptionOverride?: string | null }
+): Promise<void> {
+  const sql = db();
+  const current = await getProductByIdAdmin(id);
+  if (!current) throw new Error(`Product ${id} not found`);
+
+  await sql`
+    UPDATE products SET
+      featured = ${fields.featured ?? current.featured},
+      hidden = ${fields.hidden ?? current.hidden},
+      sort_order = ${fields.sortOrder !== undefined ? fields.sortOrder : current.sort_order},
+      title_override = ${fields.titleOverride !== undefined ? fields.titleOverride : current.title_override},
+      description_override = ${fields.descriptionOverride !== undefined ? fields.descriptionOverride : current.description_override}
+    WHERE id = ${id}
+  `;
+}
+
+export interface SyncRunRow {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  products_seen: number | null;
+  products_created: number | null;
+  products_updated: number | null;
+  products_deactivated: number | null;
+  error: string | null;
+}
+
+export async function listSyncRuns(limit = 10): Promise<SyncRunRow[]> {
+  const sql = db();
+  const rows = (await sql`
+    SELECT id, started_at, finished_at, status, products_seen, products_created, products_updated, products_deactivated, error
+    FROM sync_runs
+    ORDER BY started_at DESC
+    LIMIT ${limit}
+  `) as SyncRunRow[];
+  return rows;
 }
 
 export function getSql() {

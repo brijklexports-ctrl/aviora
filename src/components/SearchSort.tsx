@@ -1,14 +1,16 @@
 export function SearchSort({
+  action,
   productType,
   search,
   sort,
 }: {
+  action: string;
   productType?: string;
   search?: string;
   sort?: string;
 }) {
   return (
-    <form action="/" method="get" className="flex flex-1 flex-wrap items-center gap-3">
+    <form action={action} method="get" className="flex flex-1 flex-wrap items-center gap-3">
       {productType && <input type="hidden" name="productType" value={productType} />}
       <input
         type="text"

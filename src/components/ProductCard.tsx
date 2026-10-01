@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ProductRow } from "@/lib/db";
+import { MoodBoardButton } from "./MoodBoardButton";
 
 export function ProductCard({ product }: { product: ProductRow }) {
   const first = product.media[0];
@@ -25,6 +26,11 @@ export function ProductCard({ product }: { product: ProductRow }) {
             No image
           </div>
         )}
+        <div className="absolute right-2 top-2">
+          <MoodBoardButton
+            item={{ slug: product.slug, title: product.title, sku: product.sku, productType: product.product_type }}
+          />
+        </div>
       </div>
       <div className="space-y-1 p-4">
         <p className="text-[11px] uppercase tracking-wider text-accent">{product.product_type}</p>

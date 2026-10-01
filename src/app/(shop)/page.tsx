@@ -1,96 +1,91 @@
 import Link from "next/link";
-import { countProducts, listCategories, listProducts } from "@/lib/db";
-import { CategoryTile } from "@/components/CategoryTile";
-import { FilterSidebar } from "@/components/FilterSidebar";
-import { ProductCard } from "@/components/ProductCard";
-import { SearchSort } from "@/components/SearchSort";
+import Image from "next/image";
+import { listCollections, getRepresentativeImage } from "@/lib/db";
+import { slugify } from "@/lib/slug";
 
-const PAGE_SIZE = 24;
+// No params/searchParams on this page, so Next would otherwise try to
+// statically prerender it at build time (hitting the live DB before any
+// deploy env exists). Collections also change via the admin panel and
+// daily sync, so it should never be a stale build-time snapshot anyway.
+export const dynamic = "force-dynamic";
 
-type Sort = "newest" | "price_asc" | "price_desc";
+export default async function CollectionsHomePage() {
+  const collections = await listCollections({ publishedOnly: true });
 
-interface PageProps {
-  searchParams: Promise<{ productType?: string; q?: string; sort?: string; page?: string }>;
-}
+  const withImages = await Promise.all(
+    collections.map(async (c) => ({
+      ...c,
+      image: c.heroImageUrl ?? (await getRepresentativeImage(c.productType)),
+      slug: slugify(c.productType),
+    }))
+  );
 
-export default async function CatalogPage({ searchParams }: PageProps) {
-  const sp = await searchParams;
-  const productType = sp.productType || undefined;
-  const search = sp.q || undefined;
-  const sort = (sp.sort as Sort) || "newest";
-  const page = Math.max(1, Number(sp.page) || 1);
-
-  const [categories, total, products] = await Promise.all([
-    listCategories(),
-    countProducts({ productType, search }),
-    listProducts({ productType, search, sort, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
-  ]);
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  const pageHref = (p: number) => {
-    const params = new URLSearchParams();
-    if (productType) params.set("productType", productType);
-    if (search) params.set("q", search);
-    if (sort !== "newest") params.set("sort", sort);
-    if (p > 1) params.set("page", String(p));
-    const qs = params.toString();
-    return qs ? `/?${qs}` : "/";
-  };
+  const [featured, ...rest] = withImages;
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-10">
-      <h1 className="mb-6 font-serif text-4xl">Catalogue</h1>
+      <h1 className="mb-6 font-serif text-4xl">Collections</h1>
 
-      <div className="mb-8 flex gap-3 overflow-x-auto pb-2">
-        {categories.map((c) => (
-          <CategoryTile
+      {featured && (
+        <Link
+          href={`/collections/${featured.slug}`}
+          className="group mb-10 grid grid-cols-1 overflow-hidden rounded-2xl border border-line bg-white md:grid-cols-2"
+        >
+          <div className="relative aspect-[4/3] md:aspect-auto">
+            {featured.image ? (
+              <Image
+                src={featured.image}
+                alt={featured.title}
+                fill
+                sizes="(min-width: 768px) 50vw, 100vw"
+                className="object-cover transition-transform duration-300 group-hover:scale-105"
+              />
+            ) : (
+              <div className="h-full w-full bg-black" />
+            )}
+          </div>
+          <div className="flex flex-col justify-center p-8 md:p-10">
+            <p className="mb-3 text-xs uppercase tracking-wider text-accent">Featured collection</p>
+            <h2 className="mb-3 font-serif text-3xl leading-tight">{featured.title}</h2>
+            {featured.description && <p className="mb-4 text-sm text-ink/70">{featured.description}</p>}
+            <p className="text-sm font-medium text-ink/60">{featured.count} pieces</p>
+            <span className="mt-5 inline-flex w-fit items-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm text-white">
+              View collection →
+            </span>
+          </div>
+        </Link>
+      )}
+
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {rest.map((c) => (
+          <Link
             key={c.productType}
-            productType={c.productType}
-            count={c.count}
-            active={productType === c.productType}
-          />
+            href={`/collections/${c.slug}`}
+            className="group overflow-hidden rounded-xl border border-line bg-white"
+          >
+            <div className="relative aspect-[4/3] bg-black">
+              {c.image ? (
+                <Image
+                  src={c.image}
+                  alt={c.title}
+                  fill
+                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                  className="object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+              ) : null}
+            </div>
+            <div className="p-4">
+              <h3 className="font-serif text-lg">{c.title}</h3>
+              {c.description && <p className="mt-1 line-clamp-2 text-sm text-ink/60">{c.description}</p>}
+              <p className="mt-2 text-xs uppercase tracking-wide text-ink/50">{c.count} pieces</p>
+            </div>
+          </Link>
         ))}
       </div>
 
-      <div className="flex flex-col gap-8 lg:flex-row">
-        <FilterSidebar categories={categories} activeType={productType} />
-
-        <div className="flex-1">
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <p className="text-sm text-ink/60">{total} pieces</p>
-            <SearchSort productType={productType} search={search} sort={sort} />
-          </div>
-
-          {products.length === 0 ? (
-            <p className="py-20 text-center text-ink/50">No products match your filters.</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-              {products.map((p) => (
-                <ProductCard key={p.id} product={p} />
-              ))}
-            </div>
-          )}
-
-          {totalPages > 1 && (
-            <div className="mt-10 flex items-center justify-center gap-2 text-sm">
-              {page > 1 && (
-                <Link href={pageHref(page - 1)} className="rounded-full border border-line px-4 py-2 hover:border-ink">
-                  Previous
-                </Link>
-              )}
-              <span className="px-3 text-ink/60">
-                Page {page} of {totalPages}
-              </span>
-              {page < totalPages && (
-                <Link href={pageHref(page + 1)} className="rounded-full border border-line px-4 py-2 hover:border-ink">
-                  Next
-                </Link>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      {collections.length === 0 && (
+        <p className="py-20 text-center text-ink/50">No collections yet — check back soon.</p>
+      )}
     </div>
   );
 }
