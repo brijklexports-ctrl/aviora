@@ -29,7 +29,7 @@ export function MoodBoardButton({
   }, [item.slug]);
 
   const defaultClass = withLabel
-    ? "inline-flex items-center gap-2 rounded-full border border-ink px-5 py-2.5 text-sm hover:bg-ink hover:text-white"
+    ? "inline-flex items-center gap-2 min-h-[48px] rounded-full border border-ink px-5 text-sm hover:bg-ink hover:text-white"
     : "flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-ink shadow-sm hover:bg-white";
 
   return (

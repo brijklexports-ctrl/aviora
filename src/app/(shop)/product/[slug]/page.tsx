@@ -4,29 +4,37 @@ import { getProductBySlug } from "@/lib/db";
 import { ProductGallery } from "@/components/ProductGallery";
 import { MoodBoardButton } from "@/components/MoodBoardButton";
 import { slugify } from "@/lib/slug";
+import { formatCarats, formatGrams, parseSpecs } from "@/lib/specs";
+import { COMPANY } from "@/lib/company";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.avioralab.com";
-const CONTACT_EMAIL = "brij.klexports@gmail.com";
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
   if (!product || !product.active) notFound();
 
-  const specAttributes = product.attributes.filter(
-    (a) => !["price", "description", "detailedTitle"].includes(a.name)
-  );
+  const specs = parseSpecs(product.title);
+  const title = specs.cleanTitle;
+
+  const specRows: { label: string; value: string }[] = [];
+  if (specs.metal) specRows.push({ label: "Metal", value: specs.karat ? `${specs.karat} ${specs.metal}` : specs.metal });
+  if (specs.diamondWeightCt !== null) specRows.push({ label: "Diamond weight", value: formatCarats(specs.diamondWeightCt) });
+  if (specs.grossWeightG !== null) specRows.push({ label: "Gross weight", value: formatGrams(specs.grossWeightG) });
+  specRows.push({ label: "Category", value: product.product_type });
+  if (product.sku) specRows.push({ label: "Style no.", value: product.sku });
 
   const productUrl = `${SITE_URL}/product/${product.slug}`;
-  const mailSubject = `Inquiry: ${product.title}`;
+  const mailSubject = `Inquiry: ${title}`;
   const mailBody = [
     `Hi,`,
     ``,
     `I'm interested in this piece:`,
     ``,
-    product.title,
-    product.sku ? `SKU: ${product.sku}` : null,
-    `Product Type: ${product.product_type}`,
+    title,
+    product.sku ? `Style no.: ${product.sku}` : null,
+    ...specRows.filter((r) => r.label !== "Style no." && r.label !== "Category").map((r) => `${r.label}: ${r.value}`),
+    `Category: ${product.product_type}`,
     `Link: ${productUrl}`,
     ``,
     `Please send me more details.`,
@@ -35,7 +43,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   ]
     .filter((line) => line !== null)
     .join("\n");
-  const mailtoHref = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
+  const mailtoHref = `mailto:${COMPANY.email}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-10">
@@ -48,18 +56,18 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           {product.product_type}
         </Link>
         <span className="mx-2">/</span>
-        <span>{product.title}</span>
+        <span>{title}</span>
       </nav>
 
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
-        <ProductGallery media={product.media} title={product.title} />
+        <ProductGallery media={product.media} title={title} />
 
         <div>
           <p className="mb-2 text-xs uppercase tracking-wider text-ink/50">
             {product.sku ? `${product.sku} · ` : ""}
             {product.product_type}
           </p>
-          <h1 className="mb-4 font-serif text-3xl leading-tight">{product.title}</h1>
+          <h1 className="mb-4 font-serif text-3xl font-semibold leading-tight sm:text-4xl">{title}</h1>
 
           {product.description && (
             <p className="mb-6 text-sm leading-relaxed text-ink/80">{product.description}</p>
@@ -68,30 +76,25 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           <div className="mb-8 flex flex-wrap items-center gap-3">
             <a
               href={mailtoHref}
-              className="inline-block rounded-full bg-ink px-6 py-3 text-sm text-white hover:bg-ink/90"
+              className="inline-flex min-h-[48px] items-center rounded-full bg-ink px-6 text-sm text-white hover:bg-ink/90"
             >
               Contact the Seller
             </a>
             <MoodBoardButton
               withLabel
-              item={{ slug: product.slug, title: product.title, sku: product.sku, productType: product.product_type }}
+              item={{ slug: product.slug, title, sku: product.sku, productType: product.product_type }}
             />
           </div>
 
-          {specAttributes.length > 0 && (
-            <div className="divide-y divide-line border-t border-line">
-              {specAttributes.map((a, i) => (
-                <div key={i} className="flex justify-between py-3 text-sm">
-                  <span className="text-ink/60">{a.displayName}</span>
-                  <span className="font-medium">
-                    {a.prefix}
-                    {a.value}
-                    {a.suffix}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+          <h2 className="mb-2 font-serif text-xl font-semibold">Specifications</h2>
+          <dl className="divide-y divide-line border-y border-line">
+            {specRows.map((r) => (
+              <div key={r.label} className="flex justify-between gap-4 py-3 text-[15px]">
+                <dt className="text-ink/60">{r.label}</dt>
+                <dd className="text-right font-medium">{r.value}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </div>
     </div>
