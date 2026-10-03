@@ -12,6 +12,7 @@ const nextConfig = {
   async redirects() {
     return [
       { source: "/catalog", destination: "/shop", permanent: true },
+      { source: "/wholesale", destination: "/", permanent: true },
       { source: "/catalog/product/:slug", destination: "/product/:slug", permanent: true },
     ];
   },

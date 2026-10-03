@@ -59,7 +59,7 @@ export default async function CollectionPage({ params, searchParams }: PageProps
         )}
         <div className="relative z-10 mx-auto w-full max-w-7xl px-6 pb-8 text-white">
           <nav className="mb-2 text-sm text-white/70">
-            <Link href="/" className="hover:text-white">
+            <Link href="/collections" className="hover:text-white">
               Collections
             </Link>
             <span className="mx-2">/</span>

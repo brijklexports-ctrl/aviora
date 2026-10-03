@@ -45,7 +45,7 @@ export default function MoodBoardPage() {
   return (
     <div className="mx-auto max-w-4xl px-6 py-10">
       <nav className="mb-2 text-sm text-ink/60">
-        <Link href="/" className="hover:text-ink">
+        <Link href="/collections" className="hover:text-ink">
           Collections
         </Link>
         <span className="mx-2">/</span>
@@ -60,7 +60,7 @@ export default function MoodBoardPage() {
       {loaded && items.length === 0 && (
         <div className="rounded-lg border border-dashed border-line py-16 text-center text-ink/50">
           <p>Nothing saved yet.</p>
-          <Link href="/" className="mt-2 inline-block text-sm text-ink underline">
+          <Link href="/collections" className="mt-2 inline-block text-sm text-ink underline">
             Browse collections
           </Link>
         </div>

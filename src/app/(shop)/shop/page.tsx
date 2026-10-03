@@ -41,7 +41,7 @@ export default async function CatalogPage({ searchParams }: PageProps) {
   return (
     <div className="mx-auto max-w-7xl px-6 py-10">
       <nav className="mb-2 text-sm text-ink/60">
-        <Link href="/" className="hover:text-ink">
+        <Link href="/collections" className="hover:text-ink">
           Collections
         </Link>
         <span className="mx-2">/</span>
