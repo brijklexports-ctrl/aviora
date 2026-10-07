@@ -6,7 +6,7 @@ import { slugify } from "@/lib/slug";
 // No params/searchParams on this page, so Next would otherwise try to
 // statically prerender it at build time (hitting the live DB before any
 // deploy env exists). Collections also change via the admin panel and
-// daily sync, so it should never be a stale build-time snapshot anyway.
+// scheduled sync, so it should never be a stale build-time snapshot anyway.
 export const dynamic = "force-dynamic";
 
 export const metadata = { title: "Collections" };

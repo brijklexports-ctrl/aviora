@@ -22,7 +22,7 @@ export default async function AdminDashboard() {
       <div>
         <h1 className="mb-1 font-serif text-2xl">Sync</h1>
         <p className="mb-5 text-sm text-ink/60">
-          Pulls the latest products from your gembox.app catalog. Runs automatically once a day; use the button
+          Pulls the latest products from your gembox.app catalog. Runs automatically about every 3 days; use the button
           below to sync immediately instead of waiting.
         </p>
 

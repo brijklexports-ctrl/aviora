@@ -55,15 +55,16 @@ npm install
 vercel deploy --prod
 ```
 
-`vercel.json` schedules `/api/sync` to run once a day (3am UTC), which is
-the fastest cron frequency Vercel's free Hobby plan allows — no extra setup
-needed, this works out of the box.
+`vercel.json` schedules `/api/sync` to run every 3 days at 3am UTC (on days 1, 4, 7 ... of each month), which is
+within Vercel's free Hobby plan limit (one run per day at most) — no extra setup
+needed. Cron can't express an exact 3-day gap, so at the end of a month the gap
+is shorter (e.g. the 31st, then the 1st).
 
 If you ever want faster refresh (e.g. every few hours), Vercel's Hobby plan
 still won't allow it natively — you'd need either a Pro plan, or an external
 scheduler (like a GitHub Actions workflow) hitting `/api/sync` with
 `Authorization: Bearer <CRON_SECRET>` on its own schedule. Not set up here
-since daily is what's needed right now.
+since every 3 days is what is needed right now.
 
 You can also trigger a sync manually anytime without waiting for the cron:
 ```bash

@@ -6,7 +6,7 @@ import { COMPANY, phoneLink, whatsappLink } from "@/lib/company";
 import { Icon, type IconName } from "@/components/Icons";
 
 // Collections come from the live database and change via the admin panel
-// and the daily sync, so this page is never a build-time snapshot.
+// and the scheduled sync, so this page is never a build-time snapshot.
 export const dynamic = "force-dynamic";
 
 const WHY: { icon: IconName; title: string; text: string }[] = [
