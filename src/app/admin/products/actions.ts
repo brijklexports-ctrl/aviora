@@ -12,6 +12,11 @@ export async function saveProductAction(formData: FormData) {
   const sortOrderRaw = String(formData.get("sortOrder") || "").trim();
   const titleOverride = String(formData.get("titleOverride") || "").trim();
   const descriptionOverride = String(formData.get("descriptionOverride") || "").trim();
+  const priceRaw = String(formData.get("priceOverride") || "").trim();
+  const priceOverride = priceRaw === "" ? null : Number(priceRaw);
+  if (priceOverride !== null && (!Number.isFinite(priceOverride) || priceOverride < 0)) {
+    throw new Error("Fixed price must be a number that is zero or more");
+  }
 
   await updateProductAdmin(id, {
     featured,
@@ -19,6 +24,7 @@ export async function saveProductAction(formData: FormData) {
     sortOrder: sortOrderRaw === "" ? null : Number(sortOrderRaw),
     titleOverride: titleOverride || null,
     descriptionOverride: descriptionOverride || null,
+    priceOverride: priceOverride === 0 ? null : priceOverride,
   });
 
   revalidatePath("/admin/products");

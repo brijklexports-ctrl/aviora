@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getProductBySlug } from "@/lib/db";
+import { getPricingContext, getProductBySlug } from "@/lib/db";
 import { ProductGallery } from "@/components/ProductGallery";
 import { MoodBoardButton } from "@/components/MoodBoardButton";
 import { slugify } from "@/lib/slug";
 import { formatCarats, formatGrams, parseSpecs } from "@/lib/specs";
 import { COMPANY } from "@/lib/company";
+import { priceLabel } from "@/lib/pricing";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.avioralab.com";
 
@@ -14,6 +15,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const product = await getProductBySlug(slug);
   if (!product || !product.active) notFound();
 
+  const pricing = await getPricingContext();
+  const priceText = priceLabel(product, pricing);
   const specs = parseSpecs(product.title);
   const title = specs.cleanTitle;
 
@@ -34,6 +37,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     title,
     product.sku ? `Style no.: ${product.sku}` : null,
     ...specRows.filter((r) => r.label !== "Style no." && r.label !== "Category").map((r) => `${r.label}: ${r.value}`),
+    priceText && priceText !== "Request price" ? `Listed price: ${priceText}` : null,
     `Category: ${product.product_type}`,
     `Link: ${productUrl}`,
     ``,
@@ -68,6 +72,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             {product.product_type}
           </p>
           <h1 className="mb-4 font-serif text-3xl font-semibold leading-tight sm:text-4xl">{title}</h1>
+
+          {priceText && (
+            <p className={priceText === "Request price" ? "mb-5 text-lg text-ink/60" : "mb-5 font-serif text-4xl font-semibold text-ink"}>
+              {priceText}
+              {priceText !== "Request price" && <span className="ml-2 text-sm font-normal text-ink/50">wholesale price</span>}
+            </p>
+          )}
 
           {product.description && (
             <p className="mb-6 text-sm leading-relaxed text-ink/80">{product.description}</p>

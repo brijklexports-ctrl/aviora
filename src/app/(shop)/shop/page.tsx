@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { countProducts, listCategories, listProducts } from "@/lib/db";
+import { countProducts, getPricingContext, listCategories, listProducts } from "@/lib/db";
 import { CategoryTile } from "@/components/CategoryTile";
 import { FilterSidebar } from "@/components/FilterSidebar";
 import { ProductCard } from "@/components/ProductCard";
+import { priceLabel } from "@/lib/pricing";
 import { SearchSort } from "@/components/SearchSort";
 
 const PAGE_SIZE = 24;
@@ -20,10 +21,11 @@ export default async function CatalogPage({ searchParams }: PageProps) {
   const sort = (sp.sort as Sort) || "newest";
   const page = Math.max(1, Number(sp.page) || 1);
 
-  const [categories, total, products] = await Promise.all([
+  const [categories, total, products, pricing] = await Promise.all([
     listCategories(),
     countProducts({ productType, search }),
     listProducts({ productType, search, sort, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
+    getPricingContext(),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -74,7 +76,7 @@ export default async function CatalogPage({ searchParams }: PageProps) {
           ) : (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
               {products.map((p) => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard key={p.id} product={p} priceText={priceLabel(p, pricing)} />
               ))}
             </div>
           )}

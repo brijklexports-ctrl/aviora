@@ -4,7 +4,7 @@ import type { ProductRow } from "@/lib/db";
 import { MoodBoardButton } from "./MoodBoardButton";
 import { parseSpecs, specSummary } from "@/lib/specs";
 
-export function ProductCard({ product }: { product: ProductRow }) {
+export function ProductCard({ product, priceText }: { product: ProductRow; priceText?: string | null }) {
   const specs = parseSpecs(product.title);
   const summary = specSummary(specs);
   const first = product.media[0];
@@ -39,6 +39,11 @@ export function ProductCard({ product }: { product: ProductRow }) {
         <p className="text-[11px] uppercase tracking-wider text-accent">{product.product_type}</p>
         <h3 className="line-clamp-2 text-sm font-medium">{specs.cleanTitle}</h3>
         {summary && <p className="text-xs text-ink/55">{summary}</p>}
+        {priceText && (
+          <p className={priceText === "Request price" ? "pt-1 text-sm text-ink/50" : "pt-1 text-base font-semibold text-ink"}>
+            {priceText}
+          </p>
+        )}
       </div>
     </Link>
   );

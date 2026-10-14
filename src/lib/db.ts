@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless";
+import { priceAmount, resolveCategory, type CategoryRates, type PricingContext } from "./pricing";
 
 function connectionString(): string {
   const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
@@ -35,6 +36,7 @@ export interface ProductRow {
   media: ProductMedia[];
   active: boolean;
   featured: boolean;
+  price_override: number | string | null;
   last_synced_at: string;
 }
 
@@ -84,6 +86,7 @@ export async function ensureSchema() {
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS sort_order INTEGER;`;
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS title_override TEXT;`;
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS description_override TEXT;`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS price_override NUMERIC;`;
   await sql`CREATE INDEX IF NOT EXISTS idx_products_product_type ON products(product_type);`;
   await sql`CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);`;
 
@@ -114,6 +117,24 @@ export async function ensureSchema() {
       hero_image_url TEXT,
       published BOOLEAN NOT NULL DEFAULT TRUE,
       sort_order INTEGER,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `;
+
+  // Pricing: two rates per (canonical) category, and a few site-wide
+  // switches. The sync job never touches either table.
+  await sql`
+    CREATE TABLE IF NOT EXISTS category_pricing (
+      category TEXT PRIMARY KEY,
+      rate_per_gram NUMERIC,
+      rate_per_carat NUMERIC,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS site_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `;
@@ -153,7 +174,7 @@ const PUBLIC_SELECT = `
   id, slug, product_type,
   COALESCE(title_override, title) AS title,
   COALESCE(description_override, description) AS description,
-  sku, price, currency, quantity, attributes, media, active, featured, last_synced_at
+  sku, price, price_override, currency, quantity, attributes, media, active, featured, last_synced_at
 `;
 
 // --- Category merging ------------------------------------------------------
@@ -172,10 +193,6 @@ async function getCategoryAliasMap(): Promise<Record<string, string>> {
   const map: Record<string, string> = {};
   for (const r of rows) map[r.source_product_type] = r.target_category;
   return map;
-}
-
-function resolveCategory(productType: string, aliasMap: Record<string, string>): string {
-  return aliasMap[productType] ?? productType;
 }
 
 async function listRawProductTypes(): Promise<string[]> {
@@ -236,9 +253,38 @@ export async function listProducts(params: ListProductsParams = {}): Promise<Pro
   const { productType, search, sort = "newest", limit = 24, offset = 0 } = params;
   const sql = db();
   const like = search ? `%${search}%` : null;
-  const orderBy = ORDER_BY[sort] ?? ORDER_BY.newest;
   const rawTypes = productType ? await rawTypesForCategory(productType) : null;
 
+  // Prices are calculated, not stored, so sorting by price has to happen
+  // here rather than in SQL. Only when prices are actually visible: with
+  // prices switched off a price sort would be meaningless, so use "newest".
+  if (sort === "price_asc" || sort === "price_desc") {
+    const ctx = await getPricingContext();
+    if (ctx.showPrices) {
+      const all = (await sql.query(
+        `
+          SELECT ${PUBLIC_SELECT}
+          FROM products
+          WHERE active = TRUE AND hidden = FALSE
+            AND ($1::text[] IS NULL OR product_type = ANY($1))
+            AND ($2::text IS NULL OR title ILIKE $2)
+          ORDER BY ${ORDER_BY.newest}
+        `,
+        [rawTypes, like]
+      )) as ProductRow[];
+
+      const priced = all.map((p, i) => ({ p, i, price: priceAmount(p, ctx) }));
+      priced.sort((a, b) => {
+        if (a.price === null && b.price === null) return a.i - b.i;
+        if (a.price === null) return 1;
+        if (b.price === null) return -1;
+        return a.price === b.price ? a.i - b.i : sort === "price_asc" ? a.price - b.price : b.price - a.price;
+      });
+      return priced.slice(offset, offset + limit).map((x) => x.p);
+    }
+  }
+
+  const orderBy = ORDER_BY.newest;
   const rows = await sql.query(
     `
       SELECT ${PUBLIC_SELECT}
@@ -427,7 +473,7 @@ export interface ListAdminProductsParams {
 
 const ADMIN_SELECT = `
   id, slug, product_type, title, description, title_override, description_override,
-  sku, price, currency, quantity, attributes, media, active, featured, hidden,
+  sku, price, price_override, currency, quantity, attributes, media, active, featured, hidden,
   sort_order, last_synced_at
 `;
 
@@ -468,7 +514,14 @@ export async function getProductByIdAdmin(id: number): Promise<AdminProductRow |
 
 export async function updateProductAdmin(
   id: number,
-  fields: { featured?: boolean; hidden?: boolean; sortOrder?: number | null; titleOverride?: string | null; descriptionOverride?: string | null }
+  fields: {
+    featured?: boolean;
+    hidden?: boolean;
+    sortOrder?: number | null;
+    titleOverride?: string | null;
+    descriptionOverride?: string | null;
+    priceOverride?: number | null;
+  }
 ): Promise<void> {
   const sql = db();
   const current = await getProductByIdAdmin(id);
@@ -480,7 +533,8 @@ export async function updateProductAdmin(
       hidden = ${fields.hidden ?? current.hidden},
       sort_order = ${fields.sortOrder !== undefined ? fields.sortOrder : current.sort_order},
       title_override = ${fields.titleOverride !== undefined ? fields.titleOverride : current.title_override},
-      description_override = ${fields.descriptionOverride !== undefined ? fields.descriptionOverride : current.description_override}
+      description_override = ${fields.descriptionOverride !== undefined ? fields.descriptionOverride : current.description_override},
+      price_override = ${fields.priceOverride !== undefined ? fields.priceOverride : current.price_override}
     WHERE id = ${id}
   `;
 }
@@ -505,6 +559,71 @@ export async function listSyncRuns(limit = 10): Promise<SyncRunRow[]> {
     ORDER BY started_at DESC
     LIMIT ${limit}
   `) as SyncRunRow[];
+  return rows;
+}
+
+// --- Pricing -----------------------------------------------------------------
+
+export async function getPricingContext(): Promise<PricingContext> {
+  const sql = db();
+  const settings = (await sql`SELECT value FROM site_settings WHERE key = 'show_prices'`) as Array<{ value: string }>;
+  const rateRows = (await sql`SELECT category, rate_per_gram, rate_per_carat FROM category_pricing`) as Array<{
+    category: string;
+    rate_per_gram: string | null;
+    rate_per_carat: string | null;
+  }>;
+  const aliases = await getCategoryAliasMap();
+
+  const rates: Record<string, CategoryRates> = {};
+  for (const r of rateRows) {
+    rates[r.category] = {
+      perGram: r.rate_per_gram === null ? null : Number(r.rate_per_gram),
+      perCarat: r.rate_per_carat === null ? null : Number(r.rate_per_carat),
+    };
+  }
+
+  return { showPrices: settings[0]?.value === "true", rates, aliases };
+}
+
+export async function setShowPrices(show: boolean): Promise<void> {
+  const sql = db();
+  await sql`
+    INSERT INTO site_settings (key, value, updated_at) VALUES ('show_prices', ${show ? "true" : "false"}, now())
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+  `;
+}
+
+export async function setCategoryRates(category: string, perGram: number | null, perCarat: number | null): Promise<void> {
+  const sql = db();
+  await sql`
+    INSERT INTO category_pricing (category, rate_per_gram, rate_per_carat, updated_at)
+    VALUES (${category}, ${perGram}, ${perCarat}, now())
+    ON CONFLICT (category) DO UPDATE SET
+      rate_per_gram = EXCLUDED.rate_per_gram,
+      rate_per_carat = EXCLUDED.rate_per_carat,
+      updated_at = now()
+  `;
+}
+
+// Every visible piece, trimmed to what pricing needs. Used by the admin
+// pricing page to show how many pieces in each category can be priced.
+export interface PriceableRow {
+  id: number;
+  slug: string;
+  title: string;
+  sku: string | null;
+  product_type: string;
+  price_override: number | string | null;
+}
+
+export async function listPriceableProducts(): Promise<PriceableRow[]> {
+  const sql = db();
+  const rows = (await sql`
+    SELECT id, slug, COALESCE(title_override, title) AS title, sku, product_type, price_override
+    FROM products
+    WHERE active = TRUE AND hidden = FALSE
+    ORDER BY product_type, id
+  `) as PriceableRow[];
   return rows;
 }
 

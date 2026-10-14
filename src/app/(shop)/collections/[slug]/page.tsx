@@ -1,9 +1,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
-import { countProducts, getRepresentativeImage, listCollections, listProducts } from "@/lib/db";
+import { countProducts, getPricingContext, getRepresentativeImage, listCollections, listProducts } from "@/lib/db";
 import { slugify } from "@/lib/slug";
 import { ProductCard } from "@/components/ProductCard";
+import { priceLabel } from "@/lib/pricing";
 import { SearchSort } from "@/components/SearchSort";
 
 const PAGE_SIZE = 24;
@@ -27,7 +28,7 @@ export default async function CollectionPage({ params, searchParams }: PageProps
   const sort = (sp.sort as Sort) || "newest";
   const page = Math.max(1, Number(sp.page) || 1);
 
-  const [total, products, heroImage] = await Promise.all([
+  const [total, products, heroImage, pricing] = await Promise.all([
     countProducts({ productType: collection.productType, search }),
     listProducts({
       productType: collection.productType,
@@ -37,6 +38,7 @@ export default async function CollectionPage({ params, searchParams }: PageProps
       offset: (page - 1) * PAGE_SIZE,
     }),
     collection.heroImageUrl ? Promise.resolve(collection.heroImageUrl) : getRepresentativeImage(collection.productType),
+    getPricingContext(),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -81,7 +83,7 @@ export default async function CollectionPage({ params, searchParams }: PageProps
         ) : (
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
             {products.map((p) => (
-              <ProductCard key={p.id} product={p} />
+              <ProductCard key={p.id} product={p} priceText={priceLabel(p, pricing)} />
             ))}
           </div>
         )}

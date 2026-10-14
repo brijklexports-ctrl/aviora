@@ -99,6 +99,19 @@ export default async function AdminProductsPage({
                   />
                 </label>
 
+                <label className="flex items-center gap-1.5 text-sm">
+                  Fixed price $
+                  <input
+                    type="number"
+                    name="priceOverride"
+                    min="0"
+                    step="1"
+                    defaultValue={p.price_override ?? ""}
+                    placeholder="formula"
+                    className="w-24 rounded border border-line px-2 py-1 text-sm outline-none focus:border-ink"
+                  />
+                </label>
+
                 <details className="w-full">
                   <summary className="cursor-pointer text-xs text-ink/50">Override title/description</summary>
                   <div className="mt-2 space-y-2">
