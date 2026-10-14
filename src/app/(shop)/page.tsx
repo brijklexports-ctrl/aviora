@@ -17,13 +17,13 @@ const WHY: { icon: IconName; title: string; text: string }[] = [
   },
   {
     icon: "pin",
-    title: "Made in Dubai",
-    text: "Every piece is crafted in Dubai, one of the world's leading centers for diamonds and fine jewelry.",
+    title: "We make it ourselves",
+    text: "We manufacture our own jewelry, so there is no middleman. You buy straight from the maker.",
   },
   {
     icon: "tag",
-    title: "Pricing that grows with you",
-    text: "The more you order, the better your rates. Ask us about wholesale pricing for your store.",
+    title: "More room to make money",
+    text: "No middleman means better margins for your store, so you can stay one step ahead of the jewelers near you.",
   },
   {
     icon: "diamond",
@@ -52,8 +52,8 @@ const FAQ = [
     a: "Yes. Our diamond jewelry is IGI certified.",
   },
   {
-    q: "Where is the jewelry made?",
-    a: "All of our jewelry is made in Dubai.",
+    q: "Who makes your jewelry?",
+    a: "We do. We manufacture our own jewelry, so you buy directly from the maker with no middleman.",
   },
   {
     q: `Who is ${COMPANY.parent}?`,
@@ -87,7 +87,7 @@ export default async function HomePage() {
               Wholesale diamond jewelry
             </p>
             <h1 className="font-serif text-[2.6rem] font-semibold leading-[1.05] sm:text-5xl lg:text-6xl">
-              Certified diamond jewelry, made in Dubai.
+              Certified diamond jewelry, direct from the maker.
             </h1>
             <p className="mt-5 max-w-lg text-base leading-relaxed text-white/75 sm:text-lg">
               Trusted by {COMPANY.retailersServed} retailers. {COMPANY.yearsInBusiness} years of experience behind
@@ -131,7 +131,7 @@ export default async function HomePage() {
             { big: `${COMPANY.yearsInBusiness}`, small: "years in business" },
             { big: COMPANY.retailersServed, small: "retailers trust us" },
             { big: "IGI", small: "certified diamonds" },
-            { big: "Dubai", small: "made in" },
+            { big: "Direct", small: "from the maker" },
           ].map((s) => (
             <div key={s.small} className="text-center">
               <p className="font-serif text-4xl font-semibold text-gold sm:text-5xl">{s.big}</p>
@@ -236,7 +236,7 @@ export default async function HomePage() {
           <p className="mt-5 text-base leading-relaxed text-white/75 sm:text-lg">
             {COMPANY.brand} is a brand of {COMPANY.parent}, the company that retailers have trusted for{" "}
             {COMPANY.yearsInBusiness} years. Today we supply more than {COMPANY.retailersServed} retailers with
-            IGI certified diamond jewelry made in Dubai.
+            IGI certified diamond jewelry that we make ourselves.
           </p>
           <Link
             href="/about"

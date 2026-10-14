@@ -3,7 +3,7 @@ import { COMPANY } from "@/lib/company";
 
 export const metadata = {
   title: "About us",
-  description: `${COMPANY.brand} is a brand of ${COMPANY.parent}, supplying IGI certified diamond jewelry made in Dubai to retailers.`,
+  description: `${COMPANY.brand} is a brand of ${COMPANY.parent}, supplying IGI certified diamond jewelry, made by us and sold direct to retailers.`,
 };
 
 export default function AboutPage() {
@@ -21,7 +21,7 @@ export default function AboutPage() {
           their stores.
         </p>
         <p>
-          Our diamond jewelry is made in Dubai and is IGI certified. IGI is an independent gemological laboratory, so the
+          We manufacture our own jewelry, so there is no middleman between us and your store. Our diamond jewelry is IGI certified. IGI is an independent gemological laboratory, so the
           grading on a certificate comes from a third party.
         </p>
         <p>

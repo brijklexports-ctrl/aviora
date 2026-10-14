@@ -25,10 +25,10 @@ export const metadata: Metadata = {
     template: `%s | ${SITE_NAME}`,
   },
   description:
-    "IGI certified diamond jewelry made in Dubai, supplied to retailers. 30 years in business, 1,000+ retailers served.",
+    "IGI certified diamond jewelry, made by us and sold direct to retailers with no middleman. 30 years in business, 1,000+ retailers served.",
   openGraph: {
     title: SITE_NAME,
-    description: "IGI certified diamond jewelry made in Dubai, supplied to retailers.",
+    description: "IGI certified diamond jewelry, made by us and sold direct to retailers with no middleman.",
     type: "website",
     siteName: SITE_NAME,
   },

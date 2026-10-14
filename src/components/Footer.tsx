@@ -12,7 +12,7 @@ export function Footer() {
         <div className="md:col-span-1">
           <Image src="/brand/logo-full.png" alt={COMPANY.brand} width={1127} height={862} className="h-auto w-40" />
           <p className="mt-4 text-sm leading-relaxed">
-            IGI certified diamond jewelry, made in Dubai and supplied to retailers.
+            IGI certified diamond jewelry, made by us and sold direct to retailers.
           </p>
         </div>
 
