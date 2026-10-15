@@ -352,6 +352,19 @@ export async function getProductBySlug(slug: string): Promise<ProductRow | null>
   return rows[0] ?? null;
 }
 
+// Used by the mood board: fresh details for the pieces a visitor has saved.
+// Only pieces that are currently visible are returned; anything retired or
+// hidden since it was saved simply comes back missing.
+export async function getProductsBySlugs(slugs: string[]): Promise<ProductRow[]> {
+  if (slugs.length === 0) return [];
+  const sql = db();
+  const rows = (await sql.query(
+    `SELECT ${PUBLIC_SELECT} FROM products WHERE slug = ANY($1::text[]) AND active = TRUE AND hidden = FALSE`,
+    [slugs]
+  )) as ProductRow[];
+  return rows;
+}
+
 // --- Collections (auto-derived from product_type; collection_meta only
 // carries editorial overrides on top) -------------------------------------
 
